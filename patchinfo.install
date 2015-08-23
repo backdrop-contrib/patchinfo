@@ -1,0 +1,51 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions for the Patch Info module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function patchinfo_schema() {
+  $schema = array();
+
+  $schema['patchinfo'] = array(
+    'description' => 'Information on patches in modules',
+    'fields' => array(
+      'module' => array(
+        'description' => 'Machine readable name of module',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+      ),
+      'id' => array(
+        'description' => 'Index of patch in module',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'url' => array(
+        'description' => 'Patch URL',
+        'type' => 'text',
+        'not null' => TRUE,
+      ),
+      'info' => array(
+        'description' => 'Additional information',
+        'type' => 'text',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('module', 'id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function patchinfo_uninstall() {
+  variable_del('patchinfo_exclude_from_update_check');
+}

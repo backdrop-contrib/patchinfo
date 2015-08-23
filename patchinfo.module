@@ -1,0 +1,616 @@
+<?php
+
+/**
+ * @file
+ * Patch Info primary module file.
+ */
+
+/**
+ * Implements hook_system_info_alter().
+ */
+function patchinfo_system_info_alter(&$info, $file, $type) {
+  // Get patch information from .info files and save it to the database.
+  if ($type == 'module') {
+    _patchinfo_clear_db($file->name);
+    if (isset($info['patch']) && is_array($info['patch']) && count($info['patch']) > 0) {
+      _patchinfo_process_module($file->name, $info['patch']);
+    }
+  }
+}
+
+/**
+ * Implements hook_update_projects_alter().
+ */
+function patchinfo_update_projects_alter(&$projects) {
+  $excluded_modules = variable_get('patchinfo_exclude_from_update_check', array());
+
+  // Hide excluded modules from update check.
+  if (count($excluded_modules) > 0) {
+    foreach ($excluded_modules as $module) {
+      if (isset($projects[$module])) {
+        unset($projects[$module]);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function patchinfo_form_alter(&$form, &$form_state, $form_id) {
+  // Modify update manager form.
+  if ($form_id == 'update_manager_update_form') {
+    // Add our CSS.
+    $form['#attached']['css'][] = drupal_get_path('module', 'patchinfo') . '/patchinfo.css';
+
+    // Add a highly visible notice for patched modules.
+    $patch_info = _patchinfo_get_info();
+    if (count($patch_info) > 0) {
+      $projects = update_get_projects();
+      foreach (element_children($form['project_downloads']) as $module) {
+        $patches = _patchinfo_get_patches($patch_info, $projects[$module]);
+        if (count($patches) > 0) {
+          $form['projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
+            'patches' => $patches,
+            'is_core' => FALSE,
+          ));
+        }
+      }
+    }
+
+    // If a manual update is available, check, if Drupal core has any
+    // patches. If so, show a warning above the update form.
+    if (isset($form['manual_updates'])) {
+      $patches_drupal = _patchinfo_get_patches($patch_info, $projects['drupal']);
+      if (count($patches_drupal) > 0) {
+        $form['#prefix'] = theme('patchinfo_patches', array(
+          'patches' => $patches_drupal,
+          'is_core' => TRUE,
+        ));
+      }
+    }
+  }
+
+  // Extend update settings.
+  if ($form_id == 'update_settings') {
+    $excluded_modules = variable_get('patchinfo_exclude_from_update_check', array());
+
+    // Add text area for exclude modules setting.
+    $form['patchinfo_exclude_from_update_check'] = array(
+      '#title' => t('Exclude modules from update check'),
+      '#type' => 'textarea',
+      '#description' => t('Modules, which should be excluded from the update check, can be listed here. Each entry should use the machine readable name of the module and go on a seperate line.'),
+      '#default_value' => implode("\n", $excluded_modules),
+    );
+    $form['#submit'][] = 'patchinfo_update_settings_form_submit';
+  }
+}
+
+/**
+ * Submission handler for extended update settings form.
+ *
+ * @param array $form
+ *   Drupal Form API form information.
+ * @param array $form_state
+ *   Drupal Form API form state information.
+ */
+function patchinfo_update_settings_form_submit(array $form, array &$form_state) {
+  // Get value of exclude update setting from form state and save it
+  // into a variable.
+  $exclude_modules = $form_state['values']['patchinfo_exclude_from_update_check'];
+  $exclude_modules = explode("\n", $exclude_modules);
+  foreach ($exclude_modules as $k => $e) {
+    $e = trim($e);
+    if (!empty($e)) {
+      $exclude_modules[$k] = $e;
+    }
+    else {
+      unset($exclude_modules[$k]);
+    }
+  }
+  variable_set('patchinfo_exclude_from_update_check', $exclude_modules);
+}
+
+/**
+ * Remove all patch information for a module from DB.
+ *
+ * @param string $module
+ *   Machine readable module name.
+ */
+function _patchinfo_clear_db($module) {
+  if (!empty($module)) {
+    db_delete('patchinfo')->condition('module', $module)->execute();
+  }
+}
+
+/**
+ * Get all patches for a module (including its submodules).
+ *
+ * @param array $patch_info
+ *   Patch information as returned by _patchinfo_get_info().
+ * @param array $project_info
+ *   Project information for a single project, i.e. a single value from
+ *   the array returned by update_get_projects().
+ *
+ * @return array
+ *   Array containing all patch information for a module and its
+ *   submodules.
+ */
+function _patchinfo_get_patches(array $patch_info, array $project_info) {
+  $return = array();
+
+  // For each module in this project (including submodules) check, if
+  // there are patches and if so, merge them into our array containing
+  // all patch information for this project.
+  foreach ($project_info['includes'] as $module_key => $module_name) {
+    if (isset($patch_info[$module_key])) {
+      $return = array_merge($return, $patch_info[$module_key]);
+    }
+  }
+
+  return $return;
+}
+
+/**
+ * Get patch information from DB.
+ *
+ * @param bool $raw
+ *   If TRUE, uses an array containing url and info keys for each
+ *   patch. If FALSE (default), either use info text only or, if
+ *   a URL is available, a suitable link for each patch.
+ *
+ * @return array
+ *   Array of patches in DB keyed by machine readable module name.
+ */
+function _patchinfo_get_info($raw = FALSE) {
+  $patch_info = array();
+  $result = db_select('patchinfo', 'pi')->fields('pi', array(
+    'module',
+    'id',
+    'url',
+    'info',
+  ))->execute();
+  foreach ($result as $row) {
+    if (!isset($patch_info[$row->module])) {
+      $patch_info[$row->module] = array();
+    }
+    if ($raw) {
+      $patch_info[$row->module][$row->id]['url'] = $row->url;
+      $patch_info[$row->module][$row->id]['info'] = $row->info;
+    }
+    else {
+      if (!empty($row->url)) {
+        $patch_info[$row->module][$row->id] = l($row->info, $row->url, array('external' => TRUE));
+      }
+      else {
+        $patch_info[$row->module][$row->id] = check_plain($row->info);
+      }
+    }
+  }
+  return $patch_info;
+}
+
+/**
+ * Process patch information for a module.
+ *
+ * @param string $module
+ *   Machine readable module name.
+ * @param array $patch_info
+ *   Patch info from module info file.
+ */
+function _patchinfo_process_module($module, array $patch_info) {
+  if (!empty($module)) {
+    foreach ($patch_info as $key => $info) {
+      // Calculate an index for each patch, which is not 0.
+      $index = $key + 1;
+
+      // Extract URL from patch information, if any.
+      $info = explode(' ', $info);
+      $url = '';
+      if (filter_var($info[0], FILTER_VALIDATE_URL) !== FALSE) {
+        $url = $info[0];
+        unset($info[0]);
+      }
+      $info = implode(' ', $info);
+
+      // Write patch information to db.
+      db_merge('patchinfo')
+        ->key(array(
+          'module' => $module,
+          'id' => $index,
+        ))
+        ->fields(array(
+          'url' => $url,
+          'info' => $info,
+        ))
+        ->execute();
+    }
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function patchinfo_theme($existing, $type, $theme, $path) {
+  return array(
+    'patchinfo_excluded_modules' => array(
+      'variables' => array(
+        'excluded_modules' => array(),
+      ),
+    ),
+    'patchinfo_patches' => array(
+      'variables' => array(
+        'patches' => array(),
+        'is_core' => FALSE,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_theme_registry_alter().
+ */
+function patchinfo_theme_registry_alter(&$theme_registry) {
+  // Replace theme function for update report with our own function,
+  // so that we can alter it.
+  if (isset($theme_registry['update_report'])) {
+    $theme_registry['update_report']['function'] = 'patchinfo_update_report';
+  }
+}
+
+/**
+ * Custom implementation of theme_update_report().
+ *
+ * @see theme_update_report()
+ */
+function patchinfo_update_report($variables) {
+  $patch_info = _patchinfo_get_info();
+  $data = $variables['data'];
+
+  $last = variable_get('update_last_check', 0);
+  $output = theme('update_last_check', array('last' => $last));
+
+  // Add our CSS.
+  drupal_add_css(drupal_get_path('module', 'patchinfo') . '/patchinfo.css');
+
+  // Add markup for excluded modules.
+  $output .= theme('patchinfo_excluded_modules', array(
+    'excluded_modules' => variable_get('patchinfo_exclude_from_update_check', array()),
+  ));
+
+  if (!is_array($data)) {
+    $output .= '<p>' . $data . '</p>';
+    return $output;
+  }
+
+  $header = array();
+  $rows = array();
+
+  $notification_level = variable_get('update_notification_threshold', 'all');
+
+  // Create an array of status values keyed by module or theme name, since
+  // we'll need this while generating the report if we have to cross reference
+  // anything (e.g. subthemes which have base themes missing an update).
+  foreach ($data as $project) {
+    foreach ($project['includes'] as $key => $name) {
+      $status[$key] = $project['status'];
+    }
+  }
+
+  foreach ($data as $project) {
+    switch ($project['status']) {
+      case UPDATE_CURRENT:
+        $class = 'ok';
+        $icon = theme('image', array(
+          'path' => 'misc/watchdog-ok.png',
+          'width' => 18,
+          'height' => 18,
+          'alt' => t('ok'),
+          'title' => t('ok'),
+        ));
+        break;
+
+      case UPDATE_UNKNOWN:
+      case UPDATE_FETCH_PENDING:
+      case UPDATE_NOT_FETCHED:
+        $class = 'unknown';
+        $icon = theme('image', array(
+          'path' => 'misc/watchdog-warning.png',
+          'width' => 18,
+          'height' => 18,
+          'alt' => t('warning'),
+          'title' => t('warning'),
+        ));
+        break;
+
+      case UPDATE_NOT_SECURE:
+      case UPDATE_REVOKED:
+      case UPDATE_NOT_SUPPORTED:
+        $class = 'error';
+        $icon = theme('image', array(
+          'path' => 'misc/watchdog-error.png',
+          'width' => 18,
+          'height' => 18,
+          'alt' => t('error'),
+          'title' => t('error'),
+        ));
+        break;
+
+      case UPDATE_NOT_CHECKED:
+      case UPDATE_NOT_CURRENT:
+      default:
+        $class = 'warning';
+        $icon = theme('image', array(
+          'path' => 'misc/watchdog-warning.png',
+          'width' => 18,
+          'height' => 18,
+          'alt' => t('warning'),
+          'title' => t('warning'),
+        ));
+        break;
+
+    }
+
+    $row = '<div class="version-status">';
+    $status_label = theme('update_status_label', array('status' => $project['status']));
+    $row .= !empty($status_label) ? $status_label : check_plain($project['reason']);
+    $row .= '<span class="icon">' . $icon . '</span>';
+    $row .= "</div>\n";
+
+    $row .= '<div class="project">';
+    if (isset($project['title'])) {
+      if (isset($project['link'])) {
+        $row .= l($project['title'], $project['link']);
+      }
+      else {
+        $row .= check_plain($project['title']);
+      }
+    }
+    else {
+      $row .= check_plain($project['name']);
+    }
+    $row .= ' ' . check_plain($project['existing_version']);
+    if ($project['install_type'] == 'dev' && !empty($project['datestamp'])) {
+      $row .= ' <span class="version-date">(' . format_date($project['datestamp'], 'custom', 'Y-M-d') . ')</span>';
+    }
+    $row .= "</div>\n";
+
+    $versions_inner = '';
+    $security_class = array();
+    $version_class = array();
+    if (isset($project['recommended'])) {
+      if ($project['status'] != UPDATE_CURRENT || $project['existing_version'] !== $project['recommended']) {
+
+        // First, figure out what to recommend.
+        // If there's only 1 security update and it has the same version we're
+        // recommending, give it the same CSS class as if it was recommended,
+        // but don't print out a separate "Recommended" line for this project.
+        if (!empty($project['security updates']) && count($project['security updates']) == 1 && $project['security updates'][0]['version'] === $project['recommended']) {
+          $security_class[] = 'version-recommended';
+          $security_class[] = 'version-recommended-strong';
+        }
+        else {
+          $version_class[] = 'version-recommended';
+          // Apply an extra class if we're displaying both a recommended
+          // version and anything else for an extra visual hint.
+          if ($project['recommended'] !== $project['latest_version'] || !empty($project['also']) || ($project['install_type'] == 'dev' && isset($project['dev_version']) && $project['latest_version'] !== $project['dev_version'] && $project['recommended'] !== $project['dev_version']) || (isset($project['security updates'][0]) && $project['recommended'] !== $project['security updates'][0])) {
+            $version_class[] = 'version-recommended-strong';
+          }
+          $versions_inner .= theme('update_version', array(
+            'version' => $project['releases'][$project['recommended']],
+            'tag' => t('Recommended version:'),
+            'class' => $version_class,
+          ));
+        }
+
+        // Now, print any security updates.
+        if (!empty($project['security updates'])) {
+          $security_class[] = 'version-security';
+          foreach ($project['security updates'] as $security_update) {
+            $versions_inner .= theme('update_version', array(
+              'version' => $security_update,
+              'tag' => t('Security update:'),
+              'class' => $security_class,
+            ));
+          }
+        }
+      }
+
+      if ($project['recommended'] !== $project['latest_version']) {
+        $versions_inner .= theme('update_version', array(
+          'version' => $project['releases'][$project['latest_version']],
+          'tag' => t('Latest version:'),
+          'class' => array('version-latest'),
+        ));
+      }
+      if ($project['install_type'] == 'dev' && $project['status'] != UPDATE_CURRENT && isset($project['dev_version']) && $project['recommended'] !== $project['dev_version']) {
+        $versions_inner .= theme('update_version', array(
+          'version' => $project['releases'][$project['dev_version']],
+          'tag' => t('Development version:'),
+          'class' => array('version-latest'),
+        ));
+      }
+    }
+
+    if (isset($project['also'])) {
+      foreach ($project['also'] as $also) {
+        $versions_inner .= theme('update_version', array(
+          'version' => $project['releases'][$also],
+          'tag' => t('Also available:'),
+          'class' => array('version-also-available'),
+        ));
+      }
+    }
+
+    if (!empty($versions_inner)) {
+      $row .= "<div class=\"versions\">\n" . $versions_inner . "</div>\n";
+    }
+    $row .= "<div class=\"info\">\n";
+    if (!empty($project['extra'])) {
+      $row .= '<div class="extra">' . "\n";
+      foreach ($project['extra'] as $key => $value) {
+        $row .= '<div class="' . implode(' ', $value['class']) . '">';
+        $row .= check_plain($value['label']) . ': ';
+        $row .= drupal_placeholder($value['data']);
+        $row .= "</div>\n";
+      }
+      // Extra div.
+      $row .= "</div>\n";
+    }
+
+    // Display patch information.
+    $patches = _patchinfo_get_patches($patch_info, $project);
+    if (count($patches) > 0) {
+      $row .= theme('patchinfo_patches', array(
+        'patches' => $patches,
+        'is_core' => FALSE,
+      ));
+    }
+
+    $row .= '<div class="includes">';
+    sort($project['includes']);
+    if (!empty($project['disabled'])) {
+      sort($project['disabled']);
+      // Make sure we start with a clean slate for each project in the report.
+      $includes_items = array();
+      $row .= t('Includes:');
+      $includes_items[] = t('Enabled: %includes', array('%includes' => implode(', ', $project['includes'])));
+      $includes_items[] = t('Disabled: %disabled', array('%disabled' => implode(', ', $project['disabled'])));
+      $row .= theme('item_list', array('items' => $includes_items));
+    }
+    else {
+      $row .= t('Includes: %includes', array('%includes' => implode(', ', $project['includes'])));
+    }
+    $row .= "</div>\n";
+
+    if (!empty($project['base_themes'])) {
+      $row .= '<div class="basethemes">';
+      asort($project['base_themes']);
+      $base_themes = array();
+      foreach ($project['base_themes'] as $base_key => $base_theme) {
+        switch ($status[$base_key]) {
+          case UPDATE_NOT_SECURE:
+          case UPDATE_REVOKED:
+          case UPDATE_NOT_SUPPORTED:
+            $base_themes[] = t('%base_theme (!base_label)', array(
+              '%base_theme' => $base_theme,
+              '!base_label' => theme('update_status_label', array(
+                'status' => $status[$base_key],
+              )),
+            ));
+            break;
+
+          default:
+            $base_themes[] = drupal_placeholder($base_theme);
+        }
+      }
+      $row .= t('Depends on: !basethemes', array('!basethemes' => implode(', ', $base_themes)));
+      $row .= "</div>\n";
+    }
+
+    if (!empty($project['sub_themes'])) {
+      $row .= '<div class="subthemes">';
+      sort($project['sub_themes']);
+      $row .= t('Required by: %subthemes', array('%subthemes' => implode(', ', $project['sub_themes'])));
+      $row .= "</div>\n";
+    }
+
+    // Info div.
+    $row .= "</div>\n";
+
+    if (!isset($rows[$project['project_type']])) {
+      $rows[$project['project_type']] = array();
+    }
+    $row_key = isset($project['title']) ? drupal_strtolower($project['title']) : drupal_strtolower($project['name']);
+    $rows[$project['project_type']][$row_key] = array(
+      'class' => array($class),
+      'data' => array($row),
+    );
+  }
+
+  $project_types = array(
+    'core' => t('Drupal core'),
+    'module' => t('Modules'),
+    'theme' => t('Themes'),
+    'module-disabled' => t('Disabled modules'),
+    'theme-disabled' => t('Disabled themes'),
+  );
+  foreach ($project_types as $type_name => $type_label) {
+    if (!empty($rows[$type_name])) {
+      ksort($rows[$type_name]);
+      $output .= "\n<h3>" . $type_label . "</h3>\n";
+      $output .= theme('table', array(
+        'header' => $header,
+        'rows' => $rows[$type_name],
+        'attributes' => array(
+          'class' => array('update'),
+        ),
+      ));
+    }
+  }
+  drupal_add_css(drupal_get_path('module', 'update') . '/update.css');
+  return $output;
+}
+
+/**
+ * Returns HTML for the excluded modules information.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - excluded_modules: Array of machine readable names of modules
+ *       excluded from update check.
+ *
+ * @ingroup themeable
+ */
+function theme_patchinfo_excluded_modules(array $variables) {
+  $output = '';
+
+  // Get excluded modules from variables.
+  $excluded_modules = $variables['excluded_modules'];
+
+  // Generate markup.
+  if (count($excluded_modules) > 0) {
+    $output .= '<div class="patchinfo-excluded-modules">';
+    $output .= '<strong>' . t('Modules excluded from update check:') . '</strong>';
+    $excluded_modules = array_map('check_plain', $excluded_modules);
+    $output .= theme('item_list', array('items' => $excluded_modules));
+    $output .= '<p>' . t("If you don't want to exclude one of these modules any longer, please update your !settings.", array(
+      '!settings' => l(t('settings'), 'admin/reports/updates/settings'),
+    )) . '</p>';
+    $output .= '</div>';
+  }
+
+  return $output;
+}
+
+/**
+ * Returns HTML listing all patches of a module and its submodules.
+ *
+ * @param array $variables
+ *   An associative array containing:
+ *   - patches: Array of patch information for a module and its
+ *       submodules.
+ *   - is_core: TRUE, if the patches are in Drupal core. Otherwise FALSE.
+ *
+ * @ingroup themeable
+ */
+function theme_patchinfo_patches(array $variables) {
+  $patches = $variables['patches'];
+  $is_core = $variables['is_core'];
+
+  // Generate markup for patch list.
+  $output = '<div class="patchinfo-patches">';
+  if ($variables['is_core']) {
+    $output .= '<p class="patchinfo-patches-core">';
+    $output .= t('Before you do a manual update, please note, that the following patches are currently applied to Drupal core:');
+    $output .= '</p>';
+  }
+  $output .= '<div class="patchinfo-patches-title">' . t('Patches:') . '</div>';
+  $patches = array_map('filter_xss', $patches);
+  $output .= theme('item_list', array(
+    'items' => $patches,
+  ));
+  $output .= '</div>';
+
+  return $output;
+}

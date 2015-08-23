@@ -1,0 +1,4 @@
+name = PatchInfo
+description = Track patch information via module info file
+package = Administration
+core = 7.x
