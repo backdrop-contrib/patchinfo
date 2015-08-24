@@ -79,7 +79,7 @@ function patchinfo_form_alter(&$form, &$form_state, $form_id) {
     $form['patchinfo_exclude_from_update_check'] = array(
       '#title' => t('Exclude modules from update check'),
       '#type' => 'textarea',
-      '#description' => t('Modules, which should be excluded from the update check, can be listed here. Each entry should use the machine readable name of the module and go on a seperate line.'),
+      '#description' => t('Modules, which should be excluded from the update check, can be listed here. Each entry should use the machine readable name of the module and go on a separate line.'),
       '#default_value' => implode("\n", $excluded_modules),
     );
     $form['#submit'][] = 'patchinfo_update_settings_form_submit';
@@ -285,8 +285,6 @@ function patchinfo_update_report($variables) {
 
   $header = array();
   $rows = array();
-
-  $notification_level = variable_get('update_notification_threshold', 'all');
 
   // Create an array of status values keyed by module or theme name, since
   // we'll need this while generating the report if we have to cross reference
@@ -600,7 +598,7 @@ function theme_patchinfo_patches(array $variables) {
 
   // Generate markup for patch list.
   $output = '<div class="patchinfo-patches">';
-  if ($variables['is_core']) {
+  if ($is_core) {
     $output .= '<p class="patchinfo-patches-core">';
     $output .= t('Before you do a manual update, please note, that the following patches are currently applied to Drupal core:');
     $output .= '</p>';
