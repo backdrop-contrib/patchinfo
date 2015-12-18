@@ -50,10 +50,18 @@ function patchinfo_form_alter(&$form, &$form_state, $form_id) {
       foreach (element_children($form['project_downloads']) as $module) {
         $patches = _patchinfo_get_patches($patch_info, $projects[$module]);
         if (count($patches) > 0) {
-          $form['projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
-            'patches' => $patches,
-            'is_core' => FALSE,
-          ));
+          if (isset($form['projects']['#options'][$module]['title'])) {
+            $form['projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
+              'patches' => $patches,
+              'is_core' => FALSE,
+            ));
+          }
+          elseif (isset($form['disabled_projects']['#options'][$module]['title'])) {
+            $form['disabled_projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
+              'patches' => $patches,
+              'is_core' => FALSE,
+            ));
+          }
         }
       }
     }
