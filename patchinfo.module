@@ -35,63 +35,62 @@ function patchinfo_update_projects_alter(&$projects) {
 }
 
 /**
- * Implements hook_form_alter().
+ * Implements hook_form_FORM_ID_alter() for update_manager_update_form().
  */
-function patchinfo_form_alter(&$form, &$form_state, $form_id) {
-  // Modify update manager form.
-  if ($form_id == 'update_manager_update_form') {
-    // Add our CSS.
-    $form['#attached']['css'][] = drupal_get_path('module', 'patchinfo') . '/patchinfo.css';
+function patchinfo_form_update_manager_update_form_alter(&$form, &$form_state, $form_id) {
+  // Add our CSS.
+  $form['#attached']['css'][] = drupal_get_path('module', 'patchinfo') . '/patchinfo.css';
 
-    // Add a highly visible notice for patched modules.
-    $patch_info = _patchinfo_get_info();
-    if (count($patch_info) > 0) {
-      $projects = update_get_projects();
-      foreach (element_children($form['project_downloads']) as $module) {
-        $patches = _patchinfo_get_patches($patch_info, $projects[$module]);
-        if (count($patches) > 0) {
-          if (isset($form['projects']['#options'][$module]['title'])) {
-            $form['projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
-              'patches' => $patches,
-              'is_core' => FALSE,
-            ));
-          }
-          elseif (isset($form['disabled_projects']['#options'][$module]['title'])) {
-            $form['disabled_projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
-              'patches' => $patches,
-              'is_core' => FALSE,
-            ));
-          }
+  // Add a highly visible notice for patched modules.
+  $patch_info = _patchinfo_get_info();
+  if (count($patch_info) > 0) {
+    $projects = update_get_projects();
+    foreach (element_children($form['project_downloads']) as $module) {
+      $patches = _patchinfo_get_patches($patch_info, $projects[$module]);
+      if (count($patches) > 0) {
+        if (isset($form['projects']['#options'][$module]['title'])) {
+          $form['projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
+            'patches' => $patches,
+            'is_core' => FALSE,
+          ));
+        }
+        elseif (isset($form['disabled_projects']['#options'][$module]['title'])) {
+          $form['disabled_projects']['#options'][$module]['title'] .= theme('patchinfo_patches', array(
+            'patches' => $patches,
+            'is_core' => FALSE,
+          ));
         }
       }
     }
+  }
 
-    // If a manual update is available, check, if Drupal core has any
-    // patches. If so, show a warning above the update form.
-    if (isset($form['manual_updates'])) {
-      $patches_drupal = _patchinfo_get_patches($patch_info, $projects['drupal']);
-      if (count($patches_drupal) > 0) {
-        $form['#prefix'] = theme('patchinfo_patches', array(
-          'patches' => $patches_drupal,
-          'is_core' => TRUE,
-        ));
-      }
+  // If a manual update is available, check, if Drupal core has any
+  // patches. If so, show a warning above the update form.
+  if (isset($form['manual_updates'])) {
+    $patches_drupal = _patchinfo_get_patches($patch_info, $projects['drupal']);
+    if (count($patches_drupal) > 0) {
+      $form['#prefix'] = theme('patchinfo_patches', array(
+        'patches' => $patches_drupal,
+        'is_core' => TRUE,
+      ));
     }
   }
+}
 
-  // Extend update settings.
-  if ($form_id == 'update_settings') {
-    $excluded_modules = variable_get('patchinfo_exclude_from_update_check', array());
+/**
+ * Implements hook_form_FORM_ID_alter() for update_settings().
+ */
+function patchinfo_form_update_settings_alter(&$form, &$form_state, $form_id) {
+  $excluded_modules = variable_get('patchinfo_exclude_from_update_check', array());
 
-    // Add text area for exclude modules setting.
-    $form['patchinfo_exclude_from_update_check'] = array(
-      '#title' => t('Exclude modules from update check'),
-      '#type' => 'textarea',
-      '#description' => t('Modules, which should be excluded from the update check, can be listed here. Each entry should use the machine readable name of the module and go on a separate line.'),
-      '#default_value' => implode("\n", $excluded_modules),
-    );
-    $form['#submit'][] = 'patchinfo_update_settings_form_submit';
-  }
+  // Add text area for exclude modules setting.
+  $form['patchinfo_exclude_from_update_check'] = array(
+    '#title' => t('Exclude modules from update check'),
+    '#type' => 'textarea',
+    '#description' => t('Modules, which should be excluded from the update check, can be listed here. Each entry should use the machine readable name of the module and go on a separate line.'),
+    '#default_value' => implode("\n", $excluded_modules),
+  );
+  $form['#submit'][] = 'patchinfo_update_settings_form_submit';
 }
 
 /**
