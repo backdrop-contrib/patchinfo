@@ -62,17 +62,17 @@ function patchinfo_form_update_manager_update_form_alter(&$form, &$form_state, $
         }
       }
     }
-  }
 
-  // If a manual update is available, check, if Drupal core has any
-  // patches. If so, show a warning above the update form.
-  if (isset($form['manual_updates'])) {
-    $patches_drupal = _patchinfo_get_patches($patch_info, $projects['drupal']);
-    if (count($patches_drupal) > 0) {
-      $form['#prefix'] = theme('patchinfo_patches', array(
-        'patches' => $patches_drupal,
-        'is_core' => TRUE,
-      ));
+    // If a manual update is available, check, if Drupal core has any
+    // patches. If so, show a warning above the update form.
+    if (isset($form['manual_updates'])) {
+      $patches_drupal = _patchinfo_get_patches($patch_info, $projects['drupal']);
+      if (count($patches_drupal) > 0) {
+        $form['#prefix'] = theme('patchinfo_patches', array(
+          'patches' => $patches_drupal,
+          'is_core' => TRUE,
+        ));
+      }
     }
   }
 }
