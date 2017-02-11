@@ -10,7 +10,7 @@
  */
 function patchinfo_system_info_alter(&$info, $file, $type) {
   // Get patch information from .info files and save it to the database.
-  if ($type == 'module') {
+  if (array($type, array('module', 'theme'))) {
     _patchinfo_clear_db($file->name);
     if (isset($info['patch']) && is_array($info['patch']) && count($info['patch']) > 0) {
       _patchinfo_process_module($file->name, $info['patch']);
