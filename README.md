@@ -41,9 +41,8 @@ RECOMMENDED MODULES
 INSTALLATION
 ------------
 
- * Install as you would normally install a contributed Drupal module. See:
-   https://drupal.org/documentation/install/modules-themes/modules-7
-   for further information.
+ * Install this module using the official Backdrop CMS instructions at
+   https://backdropcms.org/guide/modules
 
 
 CONFIGURATION
@@ -78,7 +77,10 @@ CONFIGURATION
 MAINTAINERS
 -----------
 
-Current maintainers:
+Current maintainer:
+ * Bjoern - https://github.com/bjoern-st
+
+Current drupal maintainers:
  * Patrick Fey (feyp) - https://drupal.org/u/feyp
  * David Franke (mirroar) - https://drupal.org/u/mirroar
 
