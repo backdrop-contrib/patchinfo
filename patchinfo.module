@@ -39,7 +39,7 @@ function patchinfo_update_projects_alter(&$projects) {
  */
 function patchinfo_form_update_manager_update_form_alter(&$form, &$form_state, $form_id) {
   // Add our CSS.
-  $form['#attached']['css'][] = drupal_get_path('module', 'patchinfo') . '/patchinfo.css';
+  $form['#attached']['css'][] = backdrop_get_path('module', 'patchinfo') . '/patchinfo.css';
 
   // Add a highly visible notice for patched modules.
   $patch_info = _patchinfo_get_info();
@@ -63,13 +63,13 @@ function patchinfo_form_update_manager_update_form_alter(&$form, &$form_state, $
       }
     }
 
-    // If a manual update is available, check, if Drupal core has any
+    // If a manual update is available, check, if backdrop core has any
     // patches. If so, show a warning above the update form.
     if (isset($form['manual_updates'])) {
-      $patches_drupal = _patchinfo_get_patches($patch_info, $projects['drupal']);
-      if (count($patches_drupal) > 0) {
+      $patches_backdrop = _patchinfo_get_patches($patch_info, $projects['backdrop']);
+      if (count($patches_backdrop) > 0) {
         $form['#prefix'] = theme('patchinfo_patches', array(
-          'patches' => $patches_drupal,
+          'patches' => $patches_backdrop,
           'is_core' => TRUE,
         ));
       }
@@ -97,9 +97,9 @@ function patchinfo_form_update_settings_alter(&$form, &$form_state, $form_id) {
  * Submission handler for extended update settings form.
  *
  * @param array $form
- *   Drupal Form API form information.
+ *   backdrop Form API form information.
  * @param array $form_state
- *   Drupal Form API form state information.
+ *   backdrop Form API form state information.
  */
 function patchinfo_update_settings_form_submit(array $form, array &$form_state) {
   // Get value of exclude update setting from form state and save it
@@ -278,7 +278,7 @@ function patchinfo_update_report($variables) {
   $output = theme('update_last_check', array('last' => $last));
 
   // Add our CSS.
-  drupal_add_css(drupal_get_path('module', 'patchinfo') . '/patchinfo.css');
+  backdrop_add_css(backdrop_get_path('module', 'patchinfo') . '/patchinfo.css');
 
   // Add markup for excluded modules.
   $output .= theme('patchinfo_excluded_modules', array(
@@ -456,7 +456,7 @@ function patchinfo_update_report($variables) {
       foreach ($project['extra'] as $key => $value) {
         $row .= '<div class="' . implode(' ', $value['class']) . '">';
         $row .= check_plain($value['label']) . ': ';
-        $row .= drupal_placeholder($value['data']);
+        $row .= backdrop_placeholder($value['data']);
         $row .= "</div>\n";
       }
       // Extra div.
@@ -506,7 +506,7 @@ function patchinfo_update_report($variables) {
             break;
 
           default:
-            $base_themes[] = drupal_placeholder($base_theme);
+            $base_themes[] = backdrop_placeholder($base_theme);
         }
       }
       $row .= t('Depends on: !basethemes', array('!basethemes' => implode(', ', $base_themes)));
@@ -526,7 +526,7 @@ function patchinfo_update_report($variables) {
     if (!isset($rows[$project['project_type']])) {
       $rows[$project['project_type']] = array();
     }
-    $row_key = isset($project['title']) ? drupal_strtolower($project['title']) : drupal_strtolower($project['name']);
+    $row_key = isset($project['title']) ? backdrop_strtolower($project['title']) : backdrop_strtolower($project['name']);
     $rows[$project['project_type']][$row_key] = array(
       'class' => array($class),
       'data' => array($row),
@@ -534,7 +534,7 @@ function patchinfo_update_report($variables) {
   }
 
   $project_types = array(
-    'core' => t('Drupal core'),
+    'core' => t('Backdrop core'),
     'module' => t('Modules'),
     'theme' => t('Themes'),
     'module-disabled' => t('Disabled modules'),
@@ -553,7 +553,7 @@ function patchinfo_update_report($variables) {
       ));
     }
   }
-  drupal_add_css(drupal_get_path('module', 'update') . '/update.css');
+  backdrop_add_css(backdrop_get_path('module', 'update') . '/update.css');
   return $output;
 }
 
@@ -595,7 +595,7 @@ function theme_patchinfo_excluded_modules(array $variables) {
  *   An associative array containing:
  *   - patches: Array of patch information for a module and its
  *       submodules.
- *   - is_core: TRUE, if the patches are in Drupal core. Otherwise FALSE.
+ *   - is_core: TRUE, if the patches are in backdrop core. Otherwise FALSE.
  *
  * @ingroup themeable
  */
@@ -607,7 +607,7 @@ function theme_patchinfo_patches(array $variables) {
   $output = '<div class="patchinfo-patches">';
   if ($is_core) {
     $output .= '<p class="patchinfo-patches-core">';
-    $output .= t('Before you do a manual update, please note, that the following patches are currently applied to Drupal core:');
+    $output .= t('Before you do a manual update, please note, that the following patches are currently applied to backdrop core:');
     $output .= '</p>';
   }
   $output .= '<div class="patchinfo-patches-title">' . t('Patches:') . '</div>';
